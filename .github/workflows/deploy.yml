@@ -1,0 +1,49 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+
+  # JOB 1: Run tests — if this fails, nothing else runs
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - run: pytest tests/ -v
+
+  # JOB 2: Build Docker image and push to Docker Hub
+  build-and-push:
+    needs: test   # Only runs if test job passes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Log in to Docker Hub
+        run: |
+          echo "${{ secrets.DOCKER_PASSWORD }}" |           docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+      - name: Build and push image
+        run: |
+          docker build -t ${{ secrets.DOCKER_USERNAME }}/my-cicd-app:latest .
+          docker push ${{ secrets.DOCKER_USERNAME }}/my-cicd-app:latest
+
+  # JOB 3: SSH into EC2 and deploy the new container
+  deploy:
+    needs: build-and-push   # Only runs if image was pushed
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to EC2 via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            docker pull ${{ secrets.DOCKER_USERNAME }}/my-cicd-app:latest
+            docker stop my-app || true
+            docker rm my-app || true
+            docker run -d --name my-app -p 5000:5000               ${{ secrets.DOCKER_USERNAME }}/my-cicd-app:latest
