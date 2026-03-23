@@ -33,5 +33,3 @@ def test_unknown_route_returns_404(client):
     response = client.get("/nonexistent")
     assert response.status_code == 404
 
-def test_intentional_failure():
-    assert 1 == 2  # This will always fail
